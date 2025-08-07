@@ -26,21 +26,20 @@ DETECTION_MODEL = MODEL_DIR / 'yolo11n.pt'
 
 # WebRTC Configuration
 def get_ice_servers():
-    """Fetch ICE server credentials from Metered.live or fallback to public STUN."""
+    """Fetch ICE server credentials from Metered.live if available, else use public STUN."""
+    # Use Metered.live only if credentials are present and not running on localhost
     try:
         domain = st.secrets["METERED_DOMAIN"]
         secret_key = st.secrets["METERED_SECRET_KEY"]
-    except KeyError:
-        st.warning("Metered credentials not found. Using public STUN server.")
-        return [{"urls": ["stun:stun.l.google.com:19302"]}]
-    url = f"https://{domain}/api/v1/turn/credentials?apiKey={secret_key}"
-    try:
+        # Check if running on localhost
+        if "localhost" in st.experimental_get_query_params().get("host", [""])[0] or "127.0.0.1" in st.experimental_get_query_params().get("host", [""])[0]:
+            raise KeyError  # Force fallback to public STUN on localhost
+        url = f"https://{domain}/api/v1/turn/credentials?apiKey={secret_key}"
         response = requests.get(url)
         response.raise_for_status()
         return response.json()
-    except requests.exceptions.RequestException as e:
-        st.error(f"Failed to contact Metered: {e}")
-        st.warning("Falling back to public STUN server.")
+    except Exception:
+        # Fallback for localhost or missing credentials
         return [{"urls": ["stun:stun.l.google.com:19302"]}]
 
 RTC_CONFIGURATION = RTCConfiguration({
