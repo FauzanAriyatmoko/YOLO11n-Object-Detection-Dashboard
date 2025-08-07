@@ -13,15 +13,11 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Get the absolute path of the current file
+# Path setup
 FILE = Path(__file__).resolve()
 ROOT = FILE.parent
-
-# Add the root path to the sys.path list
 if ROOT not in sys.path:
     sys.path.append(str(ROOT))
-
-# Get the relative path of the root directory with respect to the current working directory
 ROOT = ROOT.relative_to(Path.cwd())
 
 # Model Configurations
@@ -51,7 +47,6 @@ RTC_CONFIGURATION = RTCConfiguration({
     "iceServers": get_ice_servers()
 })
 
-# Global model variable (outside of session state to avoid threading issues)
 @st.cache_resource
 def load_yolo_model():
     """Load YOLO model once and cache it"""
@@ -61,7 +56,6 @@ def load_yolo_model():
             st.error(f"Model file not found: {model_path}")
             st.error("Please make sure 'yolo11n.pt' is in the 'weights' folder")
             return None
-        
         model = YOLO(str(model_path))
         st.success(f"✅ Model loaded successfully: {model_path.name}")
         return model
@@ -85,15 +79,12 @@ st.title("Real-time Object Detection with YOLO11📹")
 
 # Load model
 model = load_yolo_model()
-
 if model is None:
     st.error("❌ Cannot proceed without a valid model. Please check your model file.")
     st.stop()
 
 # Sidebar for settings
 st.sidebar.header("⚙️ Detection Settings")
-
-# Confidence slider
 confidence_value = st.sidebar.slider(
     "🎚️ Confidence Threshold", 
     min_value=0.1, 
@@ -101,13 +92,10 @@ confidence_value = st.sidebar.slider(
     value=0.4, 
     step=0.05
 )
-
-# Frame processing settings
 st.sidebar.markdown("### 📹 Performance Settings")
-frame_width = st.sidebar.selectbox("Frame Width", [320, 640, 1280], index=1)
-frame_height = st.sidebar.selectbox("Frame Height", [240, 480, 720], index=1)
+frame_width = st.sidebar.selectbox("Frame Width", [320, 640, 1280], index=0)
+frame_height = st.sidebar.selectbox("Frame Height", [240, 480, 720], index=0)
 
-# Display model info
 st.sidebar.markdown("### 📊 Model Information")
 st.sidebar.info(f"""
 **Model:** YOLO11n Detection  
@@ -115,38 +103,29 @@ st.sidebar.info(f"""
 **Confidence:** {confidence_value:.2f}
 """)
 
-# WebRTC callback function
 def video_frame_callback(frame):
     """Process video frame for object detection"""
     try:
-        # Convert frame to numpy array
         img = frame.to_ndarray(format="bgr24")
-        
-        # Run YOLO detection
+        img_resized = cv2.resize(img, (frame_width, frame_height))
         results = model.predict(
-            img, 
+            img_resized,
             conf=confidence_value,
             verbose=False,
-            device='cpu'  # Ensure CPU usage for stability
+            device='cpu'
         )
-        
-        # Draw results on frame
         if len(results) > 0:
-            # Plot detection results
             annotated_frame = results[0].plot()
             return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
         else:
-            return av.VideoFrame.from_ndarray(img, format="bgr24")
-            
+            return av.VideoFrame.from_ndarray(img_resized, format="bgr24")
     except Exception as e:
         logger.error(f"Detection error: {e}")
-        # Return original frame if error occurs
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 # Main content
 st.info("📝 Click **START** to begin real-time object detection using your webcam.")
 
-# WebRTC streamer
 webrtc_ctx = webrtc_streamer(
     key="yolo-webcam-detection",
     mode=WebRtcMode.SENDRECV,
@@ -156,7 +135,7 @@ webrtc_ctx = webrtc_streamer(
         "video": {
             "width": {"min": 320, "ideal": frame_width, "max": 1280},
             "height": {"min": 240, "ideal": frame_height, "max": 720},
-            "frameRate": {"min": 10, "ideal": 20, "max": 30}
+            "frameRate": {"min": 10, "ideal": 15, "max": 20}
         },
         "audio": False
     },
@@ -168,9 +147,8 @@ webrtc_ctx = webrtc_streamer(
     }
 )
 
-# Move Detection Status and Settings into the sidebar
+# Sidebar Detection Status
 st.sidebar.subheader("🎯 Detection Status")
-
 if webrtc_ctx.state.playing:
     st.sidebar.success("🟢 **ACTIVE** - Detection in progress!")
     st.sidebar.markdown("**Current Settings:**")
@@ -191,7 +169,7 @@ else:
     st.sidebar.markdown("**🏷️ Detectable Objects:**")
     classes = list(model.names.values())
     cols = st.sidebar.columns(2)
-    for i, cls in enumerate(classes[:20]):  # Show first 20 classes
+    for i, cls in enumerate(classes[:20]):
         with cols[i % 2]:
             st.write(f"• {cls}")
     if len(classes) > 20:
